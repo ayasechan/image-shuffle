@@ -1,0 +1,80 @@
+# https://taskfile.dev
+
+version: '3'
+
+dotenv: ['.env']
+
+vars:
+  output: dist
+  module:
+    sh: grep module go.mod | cut -d ' ' -f 2
+  commit:
+    sh: git rev-parse --short HEAD 2>/dev/null || echo 0000000
+  version:
+    sh: git describe --tags --abbrev=0 || echo 0.0.0
+  stem: '{{.module | splitList "/" | last}}'
+  args:
+    -trimpath
+    --ldflags="-w -s -X 'main.Version={{.version}}' -X 'main.Commit={{.commit}}'"
+    -o {{.output}}
+
+tasks:
+  default:
+    desc: run project
+    cmds:
+      - go run .
+  
+  build:
+    desc: build current os
+    cmds:
+      - rm -rf {{.output}}
+      - mkdir -p {{.output}}
+      - go build -o {{.output}} .
+
+  build-all:
+    desc: build all
+    cmds:
+      - rm -rf {{.output}}
+      - mkdir -p {{.output}}
+      - |-
+        {{range $_, $os := list "linux" "darwin" "windows" }}
+        {{- range list "amd64" "arm64"}}
+
+        GOOS={{$os}} GOARCH={{.}} go build {{$.args}} .
+        {{- $ext := (ternary ".exe" "" (eq $os "windows")) }}
+        {{- $buildPath := (list $.output "/" $.stem $ext | join "") }}
+        {{- $zipPath := (list $.output "/" $.stem "-" $os "-" . ".zip" | join "") }}
+        zip -0j -q {{$zipPath}} {{$buildPath}}
+        rm -f {{$buildPath}}
+        {{- $dgst := (list $zipPath ".dgst" | join "")}}
+        {{- range list "md5" "sha1" "sha256" "sha512"}}
+        openssl dgst -{{.}} {{$dgst}} | sed 's/([^)]*)//g' >> {{$dgst}}
+        {{- end -}}
+        {{- end -}}
+        {{- end -}}
+
+  release:
+    desc: public releases
+    cmds:
+      - gh release create {{.version}} dist/*
+
+  tidy:
+    desc: mod tidy
+    cmds:
+      - go mod tidy
+
+  install:
+    desc: install project
+    cmds:
+      - cp -f {{.output}}/{{.stem}}{{exeExt}} $GOPATH/bin
+
+  uninstall:
+    desc: uninstall project
+    cmds:
+      - rm -f $GOPATH/bin/{{.stem}}{{exeExt}}
+
+  clean: 
+    desc: delete cache files
+    cmds:
+      - rm -rf {{.output}}
+      - rm -f *.log
