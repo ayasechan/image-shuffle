@@ -64,12 +64,7 @@ func NewBlockShuffler(key string) *BlockShuffler {
 // 混淆图片
 // 不能被8整除的图片边缘会被舍去！
 func (bs *BlockShuffler) Encrypt(src image.Image) image.Image {
-	bounds := src.Bounds()
-	wBlockN := bounds.Dx() / BLOCK_SIZE
-	hBlockN := bounds.Dy() / BLOCK_SIZE
-	blockN := wBlockN * hBlockN
-	dst := image.NewRGBA(image.Rect(0, 0, (wBlockN * BLOCK_SIZE), (hBlockN * BLOCK_SIZE)))
-	s := RandomSeq(bs.Key, blockN)
+	dst, s := bs.prepare(src)
 	for i, v := range s {
 		drawBlock(src, dst, Block(i), Block(v))
 	}
@@ -78,12 +73,20 @@ func (bs *BlockShuffler) Encrypt(src image.Image) image.Image {
 
 // 反混淆图片
 func (bs *BlockShuffler) Decrypt(src image.Image) image.Image {
-	bounds := src.Bounds()
-	blockN := (bounds.Dx() / BLOCK_SIZE) * (bounds.Dy() / BLOCK_SIZE)
-	dst := image.NewRGBA(bounds)
-	s := RandomSeq(bs.Key, blockN)
+	dst, s := bs.prepare(src)
 	for i, v := range s {
 		drawBlock(src, dst, Block(v), Block(i))
 	}
 	return dst
+}
+
+// 共同部分
+func (bs *BlockShuffler) prepare(img image.Image) (draw.Image, []int) {
+	bounds := img.Bounds()
+	wBlockN := bounds.Dx() / BLOCK_SIZE
+	hBlockN := bounds.Dy() / BLOCK_SIZE
+	blockN := wBlockN * hBlockN
+	dst := image.NewRGBA(image.Rect(0, 0, (wBlockN * BLOCK_SIZE), (hBlockN * BLOCK_SIZE)))
+
+	return dst, RandomSeq(bs.Key, blockN)
 }
